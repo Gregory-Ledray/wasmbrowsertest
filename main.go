@@ -72,24 +72,20 @@ func main() {
 		Handler: handler,
 	}
 
-	allocCtx := context.Background()
+	opts := chromedp.DefaultExecAllocatorOptions[:]
 	if os.Getenv("WASM_HEADLESS") == "off" {
-		opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		opts = append(opts,
 			chromedp.Flag("headless", false),
 		)
-
-		var cancel context.CancelFunc
-		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
-		defer cancel()
 	} else {
-		opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		opts = append(opts,
 			chromedp.DisableGPU,
 			chromedp.NoSandbox,
 		)
-		var cancel context.CancelFunc
-		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
-		defer cancel()
 	}
+	var cancel context.CancelFunc
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
 
 	// create chrome instance
 	ctx, cancel := chromedp.NewContext(
