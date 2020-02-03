@@ -81,6 +81,14 @@ func main() {
 		var cancel context.CancelFunc
 		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
 		defer cancel()
+	} else {
+		opts := append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.DisableGPU,
+			chromedp.NoSandbox,
+		)
+		var cancel context.CancelFunc
+		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
+		defer cancel()
 	}
 
 	// create chrome instance
