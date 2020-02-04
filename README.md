@@ -55,6 +55,10 @@ A CPU profile is run during the duration of the test, and then converted to the 
 
 Yep. `GOOS=js GOARCH=wasm go run main.go` also works. If you want to actually see the application running in the browser, set the `WASM_HEADLESS` variable to `off` like so `WASM_HEADLESS=off GOOS=js GOARCH=wasm go run main.go`.
 
+### Can I use my own index.html other files when running the tests ?
+
+Yes. There is a http.FileServer set up if you have your own directory to serve. Just set `WASM_SERVER_ROOT` variable to an absolute path to a directory like so `WASM_SERVER_ROOT=/path/to/root/directory GOOS=js GOARCH=wasm go test`
+
 ### Can I use this inside Travis ?
 
 Sure.

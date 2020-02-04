@@ -66,9 +66,15 @@ func main() {
 	}
 
 	// Setup web server.
-	handler, err := NewWASMServer(wasmFile, filterCPUProfile(argsCopy[1:]), logger)
-	if err != nil {
-		logger.Fatal(err)
+	var handler http.Handler
+	if webRoot := os.Getenv("WASM_SERVER_ROOT"); webRoot != "" {
+		// use a simple web server with no passed in arguments and no logger
+		handler = http.FileServer(http.Dir(webRoot))
+	} else {
+		handler, err = NewWASMServer(wasmFile, filterCPUProfile(argsCopy[1:]), logger)
+		if err != nil {
+			logger.Fatal(err)
+		}
 	}
 	httpServer := &http.Server{
 		Handler: handler,
