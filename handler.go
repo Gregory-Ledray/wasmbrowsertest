@@ -139,10 +139,10 @@ license that can be found in the LICENSE file.
 				console.error(err);
 			});
 			await go.run(inst);
-			document.getElementById("doneButton").disabled = false;
+			document.getElementById("wasm_done").disabled = false;
 		})();
 	</script>
 
-	<button id="doneButton" style="display: none;" disabled>Done</button>
+	<button id="wasm_done" style="display: none;" disabled>Done</button>
 </body>
 </html>`
