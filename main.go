@@ -36,9 +36,9 @@ func main() {
 		wasmFile = strings.Replace(wasmFile, ext, ".wasm", -1)
 		err := os.Rename(os.Args[1], wasmFile)
 		if err != nil {
-			logger.Print("couldn't rename .test file")
 			logger.Fatal(err)
 		}
+		defer os.Rename(wasmFile, os.Args[1])
 		os.Args[1] = wasmFile
 	}
 	// We create a copy of the args to pass to NewWASMServer, because flag.Parse needs the
@@ -188,11 +188,16 @@ func filterCPUProfile(args []string) []string {
 func handleEvent(ctx context.Context, ev interface{}, logger *log.Logger) {
 	switch ev := ev.(type) {
 	case *cdpruntime.EventConsoleAPICalled:
-		for _, arg := range ev.Args {
-			// Print the full structure for transparency
-			jsonBytes, _ := arg.MarshalJSON()
-			logger.Printf("%v\n", string(jsonBytes))
+		// Print the full structure for transparency
+		jsonBytes, err := ev.MarshalJSON()
+		if err != nil {
+			logger.Fatal(err)
 		}
+		if ev.Type == cdpruntime.APITypeError {
+			// special case which can mean the WASM program never initialized
+			logger.Fatalf("fatal error while trying to run tests: %v\n", string(jsonBytes))
+		}
+		logger.Printf("%v\n", string(jsonBytes))
 	case *cdpruntime.EventExceptionThrown:
 		if ev.ExceptionDetails != nil && ev.ExceptionDetails.Exception != nil {
 			logger.Printf("%s\n", ev.ExceptionDetails.Exception.Description)
