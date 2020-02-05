@@ -99,10 +99,6 @@ func main() {
 	ctx, cancelCtx := chromedp.NewContext(allocCtx)
 	defer cancelCtx()
 
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
-		handleEvent(ctx, ev, logger)
-	})
-
 	done := make(chan struct{})
 	go func() {
 		err = httpServer.Serve(l)
@@ -111,6 +107,10 @@ func main() {
 		}
 		done <- struct{}{}
 	}()
+
+	chromedp.ListenTarget(ctx, func(ev interface{}) {
+		handleEvent(ctx, ev, httpServer, done, logger)
+	})
 
 	exitCode := 0
 	tasks := []chromedp.Action{
@@ -153,15 +153,19 @@ func main() {
 	if err != nil {
 		logger.Println(err)
 	}
-	logger.Printf("exit code seen: %v", exitCode) //TODO remove this
+	cleanupAndTerminate(ctx, exitCode, httpServer, done, logger)
+}
+
+// cleanupAndTerminate tries to clean up the http server and then terminates this program
+func cleanupAndTerminate( chromedpContext context.Context,exitCode int, httpServer *http.Server, done chan struct{}, logger *log.Logger) {
 	if exitCode != 0 {
 		defer os.Exit(1)
 	}
 	// create a timeout
-	ctx, cancelHttpServerCtx := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancelHttpServerCtx := context.WithTimeout(chromedpContext, 5*time.Second)
 	defer cancelHttpServerCtx()
 	// Close shop
-	err = httpServer.Shutdown(ctx)
+	err := httpServer.Shutdown(ctx)
 	if err != nil {
 		logger.Println(err)
 	}
@@ -185,17 +189,19 @@ func filterCPUProfile(args []string) []string {
 
 // handleEvent responds to different events from the browser and takes
 // appropriate action.
-func handleEvent(ctx context.Context, ev interface{}, logger *log.Logger) {
+func handleEvent(ctx context.Context, ev interface{}, httpServer *http.Server, done chan struct{}, logger *log.Logger) {
 	switch ev := ev.(type) {
 	case *cdpruntime.EventConsoleAPICalled:
 		// Print the full structure for transparency
 		jsonBytes, err := ev.MarshalJSON()
 		if err != nil {
-			logger.Fatal(err)
+			logger.Print(err)
+			cleanupAndTerminate(ctx, 1, httpServer, done, logger)
 		}
 		if ev.Type == cdpruntime.APITypeError {
 			// special case which can mean the WASM program never initialized
-			logger.Fatalf("fatal error while trying to run tests: %v\n", string(jsonBytes))
+			logger.Printf("fatal error while trying to run tests: %v\n", string(jsonBytes))
+			cleanupAndTerminate(ctx, 1, httpServer, done, logger)
 		}
 		logger.Printf("%v\n", string(jsonBytes))
 	case *cdpruntime.EventExceptionThrown:
@@ -232,7 +238,6 @@ func (ws *simpleWebServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path.Ext(r.URL.Path) == ".wasm" {
 		// special case?
-		log.Println("reached special case")
 		f, err := os.Open(ws.directory + "/" + r.URL.Path)
 		if err != nil {
 			log.Fatal(err)
