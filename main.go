@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime"
 	"strings"
 	"time"
 
@@ -78,46 +79,25 @@ func main() {
 		Handler: handler,
 	}
 
-	allocCtx := context.Background()
 	opts := chromedp.DefaultExecAllocatorOptions[:]
 	if os.Getenv("WASM_HEADLESS") == "off" {
 		opts = append(opts,
 			chromedp.Flag("headless", false),
 		)
-
-		var cancel context.CancelFunc
-		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
-		defer cancel()
 	}
 
 	// WSL needs the GPU disabled. See issue #10
-	// This method of checking for WSL has worked since mid 2016
-	// https://github.com/microsoft/WSL/issues/423#issuecomment-328526847
-	osReleaseFile, err := os.Open("/proc/sys/kernel/osrelease")
-	// if there was an error opening the file it must not be WSL, so ignore the error
-	if err == nil {
-		defer osReleaseFile.Close()
-		b, err := ioutil.ReadAll(osReleaseFile)
-		if err != nil {
-			logger.Fatal(err)
-		}
-		isWSL := bytes.Contains(b, []byte("Microsoft"))
-		if isWSL {
-			opts = append(opts,
-				chromedp.DisableGPU,
-			)
-
-			var cancel context.CancelFunc
-			allocCtx, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
-			defer cancel()
-		}
+	if runtime.GOOS == "linux" && isWSL() {
+		opts = append(opts,
+			chromedp.DisableGPU,
+		)
 	}
 
 	// create chrome instance
-	ctx, cancel := chromedp.NewContext(
-		allocCtx,
-	)
-	defer cancel()
+	allocCtx, cancelAllocCtx := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancelAllocCtx()
+	ctx, cancelCtx := chromedp.NewContext(allocCtx)
+	defer cancelCtx()
 
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		handleEvent(ctx, ev, logger)
@@ -178,8 +158,8 @@ func main() {
 		defer os.Exit(1)
 	}
 	// create a timeout
-	ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	ctx, cancelHttpServerCtx := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelHttpServerCtx()
 	// Close shop
 	err = httpServer.Shutdown(ctx)
 	if err != nil {
@@ -267,8 +247,17 @@ func (ws *simpleWebServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func simpleWebServerReturned(directory string) http.Handler {
 	srv := &simpleWebServer{
-		directory: directory,
+		directory:  directory,
 		fileServer: http.FileServer(http.Dir(directory)),
 	}
 	return srv
+}
+
+// isWSL returns true if the OS is WSL, false otherwise
+// This method of checking for WSL has worked since mid 2016
+// https://github.com/microsoft/WSL/issues/423#issuecomment-328526847
+func isWSL() bool {
+	b, _ := ioutil.ReadFile("/proc/sys/kernel/osrelease")
+	// if there was an error opening the file it must not be WSL, so ignore the error
+	return bytes.Contains(b, []byte("Microsoft"))
 }
