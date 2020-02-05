@@ -66,7 +66,8 @@ func main() {
 	var handler http.Handler
 	if webRoot := os.Getenv("WASM_SERVER_ROOT"); webRoot != "" {
 		// use a simple web server with no passed in arguments and no logger
-		handler = http.FileServer(http.Dir(webRoot))
+		//handler = http.FileServer(http.Dir(webRoot))
+		handler = simpleWebServerReturned(webRoot)
 	} else {
 		handler, err = NewWASMServer(wasmFile, filterCPUProfile(argsCopy[1:]), logger)
 		if err != nil {
@@ -172,7 +173,7 @@ func main() {
 	if err != nil {
 		logger.Println(err)
 	}
-	logger.Printf("exit code seen: %v", exitCode)
+	logger.Printf("exit code seen: %v", exitCode) //TODO remove this
 	if exitCode != 0 {
 		defer os.Exit(1)
 	}
@@ -229,4 +230,45 @@ func handleEvent(ctx context.Context, ev interface{}, logger *log.Logger) {
 			logger.Printf("error in cancelling context: %v\n", err)
 		}
 	}
+}
+
+// TODO: remove this?
+type simpleWebServer struct {
+	directory string
+	fileServer http.Handler
+}
+
+func (ws *simpleWebServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if ws.directory == "" {
+		log.Fatal("ws.directory was null")
+	}
+	if ws.fileServer == nil {
+		log.Fatal("ws.fileServer was nil")
+	}
+	if path.Ext(r.URL.Path) == ".wasm" {
+		// special case?
+		log.Println("reached special case")
+		f, err := os.Open(ws.directory + "/" + r.URL.Path)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		defer func() {
+			err := f.Close()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}()
+		http.ServeContent(w, r, r.URL.Path, time.Now(), f)
+	} else {
+		ws.fileServer.ServeHTTP(w, r)
+	}
+}
+
+func simpleWebServerReturned(directory string) http.Handler {
+	srv := &simpleWebServer{
+		directory: directory,
+		fileServer: http.FileServer(http.Dir(directory)),
+	}
+	return srv
 }
